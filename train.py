@@ -66,9 +66,12 @@ def train(opt):
     # data parallel for multi-GPU
     model = torch.nn.DataParallel(model).to(device)
     model.train()
-    if opt.continue_model != '':
-        print(f'loading pretrained model from {opt.continue_model}')
-        model.load_state_dict(torch.load(opt.continue_model))
+    if opt.saved_model != '':
+        print(f'loading pretrained model from {opt.saved_model}')
+        if opt.FT:
+            model.load_state_dict(torch.load(opt.saved_model), strict=False)
+        else:
+            model.load_state_dict(torch.load(opt.saved_model))
     print("Model:")
     print(model)
 
@@ -110,8 +113,8 @@ def train(opt):
 
     """ start training """
     start_iter = 0
-    if opt.continue_model != '':
-        start_iter = int(opt.continue_model.split('_')[-1].split('.')[0])
+    if opt.saved_model != '':
+        start_iter = int(opt.saved_model.split('_')[-1].split('.')[0])
         print(f'continue to train, start_iter: {start_iter}')
 
     start_time = time.time()
@@ -128,14 +131,20 @@ def train(opt):
 
         if 'CTC' in opt.Prediction:
             preds = model(image, text).log_softmax(2)
-            preds_size = torch.IntTensor([preds.size(1)] * batch_size).to(device)
+            preds_size = torch.IntTensor([preds.size(1)] * batch_size)
             preds = preds.permute(1, 0, 2)  # to use CTCLoss format
 
-            # To avoid ctc_loss issue, disabled cudnn for the computation of the ctc_loss
+            # (ctc_a) To avoid ctc_loss issue, disabled cudnn for the computation of the ctc_loss
             # https://github.com/jpuigcerver/PyLaia/issues/16
             torch.backends.cudnn.enabled = False
-            cost = criterion(preds, text, preds_size, length)
+            cost = criterion(preds, text.to(device), preds_size.to(device), length.to(device))
             torch.backends.cudnn.enabled = True
+
+            # # (ctc_b) To reproduce our pretrained model / paper, use our previous code (below code) instead of (ctc_a).
+            # # With PyTorch 1.2.0, the below code occurs NAN, so you may use PyTorch 1.1.0.
+            # # Thus, the result of CTCLoss is different in PyTorch 1.1.0 and PyTorch 1.2.0.
+            # # See https://github.com/clovaai/deep-text-recognition-benchmark/issues/56#issuecomment-526490707
+            # cost = criterion(preds, text, preds_size, length)
 
         else:
             preds = model(image, text[:, :-1]) # align with Attention.forward
@@ -206,9 +215,10 @@ if __name__ == '__main__':
     parser.add_argument('--manualSeed', type=int, default=1111, help='for random seed setting')
     parser.add_argument('--workers', type=int, help='number of data loading workers', default=4)
     parser.add_argument('--batch_size', type=int, default=192, help='input batch size')
-    parser.add_argument('--num_iter', type=int, default=300000, help='number of iterations to train for')
+    parser.add_argument('--num_iter', type=int, default=100000, help='number of iterations to train for')
     parser.add_argument('--valInterval', type=int, default=2000, help='Interval between each validation')
-    parser.add_argument('--continue_model', default='', help="path to model to continue training")
+    parser.add_argument('--saved_model', default='', help="path to model to continue training")
+    parser.add_argument('--FT', action='store_true', help='whether to do fine-tuning')
     parser.add_argument('--adam', action='store_true', help='Whether to use adam (default is Adadelta)')
     parser.add_argument('--lr', type=float, default=1, help='learning rate, default=1.0 for Adadelta')
     parser.add_argument('--beta1', type=float, default=0.9, help='beta1 for adam. default=0.9')
@@ -216,10 +226,14 @@ if __name__ == '__main__':
     parser.add_argument('--eps', type=float, default=1e-8, help='eps for Adadelta. default=1e-8')
     parser.add_argument('--grad_clip', type=float, default=5, help='gradient clipping value. default=5')
     """ Data processing """
-    parser.add_argument('--select_data', type=str, default='MJ-ST',
-                        help='select training data (default is MJ-ST, which means MJ and ST used as training data)')
-    parser.add_argument('--batch_ratio', type=str, default='0.5-0.5',
-                        help='assign ratio for each selected data in the batch')
+    # parser.add_argument('--select_data', type=str, default='MJ-ST',
+    #                     help='select training data (default is MJ-ST, which means MJ and ST used as training data)')
+    # parser.add_argument('--batch_ratio', type=str, default='0.5-0.5',
+    #                     help='assign ratio for each selected data in the batch')
+    parser.add_argument('--select_data', type=str, default='/', 
+                     help='select training data') 
+    parser.add_argument('--batch_ratio', type=str, default='1', 
+                     help='assign ratio for each selected data in the batch')
     parser.add_argument('--total_data_usage_ratio', type=str, default='1.0',
                         help='total data usage ratio, this ratio is multiplied to total number of data.')
     parser.add_argument('--batch_max_length', type=int, default=25, help='maximum-label-length')
@@ -253,7 +267,23 @@ if __name__ == '__main__':
     """ vocab / character number configuration """
     if opt.sensitive:
         # opt.character += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-        opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
+        # opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
+        try:
+            with open('./char_list.txt', "r") as f:
+                char_loaded = f.read()
+            opt.character = char_loaded
+        except Exception as ex:
+            print(ex)
+
+    # if opt.character != '/':
+    #     # opt.character += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    #     # opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
+    #     try:
+    #         with open('./{}'.format(opt.character), "r") as f:
+    #             char_loaded = f.read()
+    #         opt.character = char_loaded
+    #     except Exception as ex:
+    #         print(ex)
 
     """ Seed and GPU setting """
     # print("Random Seed: ", opt.manualSeed)
@@ -271,6 +301,7 @@ if __name__ == '__main__':
         print('if you stuck too long time with multi-GPU setting, try to set --workers 0')
         # check multi-GPU issue https://github.com/clovaai/deep-text-recognition-benchmark/issues/1
         opt.workers = opt.workers * opt.num_gpu
+        opt.batch_size = opt.batch_size * opt.num_gpu
 
         """ previous version
         print('To equlize batch stats to 1-GPU setting, the batch_size is multiplied with num_gpu and multiplied batch_size is ', opt.batch_size)
