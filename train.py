@@ -10,6 +10,7 @@ import torch.backends.cudnn as cudnn
 import torch.nn.init as init
 import torch.optim as optim
 import torch.utils.data
+from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 
 from utils import CTCLabelConverter, AttnLabelConverter, Averager
@@ -157,7 +158,6 @@ def train(opt):
         optimizer.step()
 
         loss_avg.add(cost)
-
         # validation part
         if i % opt.valInterval == 0:
             elapsed_time = time.time() - start_time
@@ -188,23 +188,23 @@ def train(opt):
                 # keep best accuracy model
                 if current_accuracy > best_accuracy:
                     best_accuracy = current_accuracy
-                    torch.save(model.state_dict(), f'./saved_models/{opt.experiment_name}/best_accuracy.pth')
+                    torch.save(model.state_dict(), f'./saved_models/{opt.experiment_name}/best_accuracy_iter_{i+1}.pth')
                 if current_norm_ED < best_norm_ED:
                     best_norm_ED = current_norm_ED
-                    torch.save(model.state_dict(), f'./saved_models/{opt.experiment_name}/best_norm_ED.pth')
+                    torch.save(model.state_dict(), f'./saved_models/{opt.experiment_name}/best_norm_ED_iter_{i+1}.pth')
                 best_model_log = f'best_accuracy: {best_accuracy:0.3f}, best_norm_ED: {best_norm_ED:0.2f}'
                 print(best_model_log)
                 log.write(best_model_log + '\n')
 
-        # save model per 1e+5 iter.
-        if (i + 1) % 1e+5 == 0:
+        # save model per 250 iter.
+        if (i + 1) % 1000 == 0:
             torch.save(
                 model.state_dict(), f'./saved_models/{opt.experiment_name}/iter_{i+1}.pth')
 
         if i == opt.num_iter:
             print('end the training')
             sys.exit()
-        i += 1
+        i = i + 1
 
 
 if __name__ == '__main__':
@@ -213,14 +213,14 @@ if __name__ == '__main__':
     parser.add_argument('--train_data', required=True, help='path to training dataset')
     parser.add_argument('--valid_data', required=True, help='path to validation dataset')
     parser.add_argument('--manualSeed', type=int, default=1111, help='for random seed setting')
-    parser.add_argument('--workers', type=int, help='number of data loading workers', default=4)
+    parser.add_argument('--workers', type=int, help='number of data loading workers', default=2)
     parser.add_argument('--batch_size', type=int, default=192, help='input batch size')
     parser.add_argument('--num_iter', type=int, default=100000, help='number of iterations to train for')
     parser.add_argument('--valInterval', type=int, default=2000, help='Interval between each validation')
     parser.add_argument('--saved_model', default='', help="path to model to continue training")
     parser.add_argument('--FT', action='store_true', help='whether to do fine-tuning')
     parser.add_argument('--adam', action='store_true', help='Whether to use adam (default is Adadelta)')
-    parser.add_argument('--lr', type=float, default=1, help='learning rate, default=1.0 for Adadelta')
+    parser.add_argument('--lr', type=float, default=0.00001, help='learning rate, default=1.0 for Adadelta')
     parser.add_argument('--beta1', type=float, default=0.9, help='beta1 for adam. default=0.9')
     parser.add_argument('--rho', type=float, default=0.95, help='decay rate rho for Adadelta. default=0.95')
     parser.add_argument('--eps', type=float, default=1e-8, help='eps for Adadelta. default=1e-8')
