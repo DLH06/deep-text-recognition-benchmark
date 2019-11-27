@@ -195,7 +195,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--eval_data', required=True, help='path to evaluation dataset')
     parser.add_argument('--benchmark_all_eval', action='store_true', help='evaluate 10 benchmark evaluation datasets')
-    parser.add_argument('--workers', type=int, help='number of data loading workers', default=4)
+    parser.add_argument('--workers', type=int, help='number of data loading workers', default=2)
     parser.add_argument('--batch_size', type=int, default=192, help='input batch size')
     parser.add_argument('--saved_model', required=True, help="path to saved_model to evaluation")
     """ Data processing """
@@ -222,7 +222,14 @@ if __name__ == '__main__':
 
     """ vocab / character number configuration """
     if opt.sensitive:
-        opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
+        # opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
+        try:
+            with open('./char_list.txt', "r") as f:
+                char_loaded = f.read()
+            opt.character = char_loaded
+        except Exception as ex:
+            print(ex)
+
 
     cudnn.benchmark = True
     cudnn.deterministic = True
