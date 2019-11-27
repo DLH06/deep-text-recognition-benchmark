@@ -66,20 +66,22 @@ def demo(opt):
                 _, preds_index = preds.max(2)
                 preds_str = converter.decode(preds_index, length_for_pred)
 
-            print('-' * 80)
-            print('image_path\tpredicted_labels')
-            print('-' * 80)
+            # print('-' * 80)
+            # print('image_path\tpredicted_labels')
+            # print('-' * 80)
             for img_name, pred in zip(image_path_list, preds_str):
                 if 'Attn' in opt.Prediction:
                     pred = pred[:pred.find('[s]')]  # prune after "end of sentence" token ([s])
 
-                print(f'{img_name}\t{pred}')
+                # print(f'{img_name}\t{pred}')
+                with open('demo.txt', 'a') as f:
+                    f.writelines(f'{img_name}\t{pred}\n')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--image_folder', required=True, help='path to image_folder which contains text images')
-    parser.add_argument('--workers', type=int, help='number of data loading workers', default=4)
+    parser.add_argument('--workers', type=int, help='number of data loading workers', default=2)
     parser.add_argument('--batch_size', type=int, default=192, help='input batch size')
     parser.add_argument('--saved_model', required=True, help="path to saved_model to evaluation")
     """ Data processing """
@@ -105,7 +107,13 @@ if __name__ == '__main__':
 
     """ vocab / character number configuration """
     if opt.sensitive:
-        opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
+        # opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
+        try:
+            with open('./char_list.txt', "r") as f:
+                char_loaded = f.read()
+            opt.character = char_loaded
+        except Exception as ex:
+            print(ex)
 
     cudnn.benchmark = True
     cudnn.deterministic = True
